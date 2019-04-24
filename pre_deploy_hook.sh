@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use Cwd "abs_path";
+use File::Path qw[remove_tree];
 use JSON;
 # # # # # CONFIG
 my $BASE_DIR    = abs_path(__FILE__."/../..");
@@ -96,7 +97,7 @@ sub copyAppToLambda {
     execOrDie($_) for @{$BUILD_TOOL{build_commands}};
     if($BUILD_TOOL{copy_commands}){
         logg("Copying App to Lambda");
-        rm_tree $LAMBDA_DIR;
+        remove_tree $LAMBDA_DIR;
         execOrDie($_) for @{$BUILD_TOOL{copy_commands}};
     }
     for my $region(@REGIONS){
