@@ -54,6 +54,8 @@ sub scriptDie(@);
 sub execOrDie($);
 sub setupModels;
 sub setup();
+sub fileToJson($);
+sub deepMerge($$);
 # # # # # MAIN
 setup();
 copyAppToLambda();
@@ -61,16 +63,8 @@ setupModels();
 # # # # # SUBS
 sub setup(){
     # Get regions needed
-    my $askConfig = $JSON->decode(do {
-        open my $fh, "<", '.ask/config' or die "$!\n";
-        local $/;
-        <$fh>;
-    });
-    my $skillConfig = $JSON->decode(do {
-        open my $fh, "<", 'skill.json' or die "$!\n";
-        local $/;
-        <$fh>;
-    });
+    my $askConfig = fileToJson('.ask/config');
+    my $skillConfig = fileToJson('skill.json');
     my %allRegions = map {
         $_->{awsRegion}, 1
     } @{$askConfig->{deploy_settings}->{default}->{resources}->{lambda}};
@@ -113,15 +107,16 @@ sub copyAppToLambda {
     }
 }
 sub setupModels {
-    my $baseFile = "$MODELS_DIR/base.json";
-    open my $fh, "<", $baseFile or die "$!";
-    my $json = "";
-    $json .= $_ for <$fh>;
-    close $fh or die "$!";
-    my $baseModel = $JSON->decode($json);
+    my $baseModel = fileToJson("$MODELS_DIR/base.json");
     for my $locale(@LOCALES){
-        open $fh, ">", "$MODELS_DIR/${locale}.json" or die "$!";
-        print $fh $JSON->encode($baseModel);
+        my $localeModel = {};
+        if(-f "$MODELS_DIR/${locale}-overlay.json"){
+            $localeModel = deepMerge($baseModel, fileToJson("$MODELS_DIR/${locale}-overlay.json"));
+        }else{
+            $localeModel = $baseModel;
+        }
+        open my $fh, ">", "$MODELS_DIR/${locale}.json" or die "$!";
+        print $fh $JSON->encode($localeModel);
         close $fh or die "$!";
     }
 }
@@ -142,4 +137,37 @@ sub execOrDie($){
 }
 sub logg(@){
     print "SCRIPT: $_\n" for @_;
+}
+sub fileToJson($){
+    my $file = shift;
+    return $JSON->decode(do {
+        open my $fh, "<", $file or die "$!\n";
+        local $/;
+        <$fh>;
+    });
+}
+sub deepMerge($$){
+    my ($a, $b) = @_;
+    return $a unless defined $b;
+    return $b unless defined $a;
+    if(ref $a ne ref $b){
+        die "Cannot merge incompatble types";
+    }
+    if(ref $a eq "HASH"){
+        my $c = $a;
+        $c->{$_} = deepMerge($a->{$_}, $b->{$_}) for keys %{$a};
+        $c->{$_} ||= $b->{$_}                    for keys %{$b};
+        return $c;
+    }elsif(ref $a eq "ARRAY"){
+        if(ref $a->[0] eq "HASH" and $a->[0]->{name}){
+            my %hashA = map { ($_->{name}, $_) } @{$a};
+            my %hashB = map { ($_->{name}, $_) } @{$b};
+            my $hashC = deepMerge(\%hashA, \%hashB);
+            return [values %{$hashC}];
+        }else{
+            return $b;
+        }
+    } else {
+        return $b;
+    }
 }
