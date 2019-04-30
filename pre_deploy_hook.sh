@@ -10,6 +10,7 @@ my $APP_DIR     = "$BASE_DIR/app";
 my $LAMBDA_DIR  = "$BASE_DIR/lambda";
 my $MODELS_DIR  = "$BASE_DIR/models";
 my @REGIONS     = undef;
+my @LOCALES     = undef;
 my $JSON        = JSON->new->pretty;
 my %BUILD_TOOL;
 my @BUILD_TOOLS = (
@@ -65,10 +66,16 @@ sub setup(){
         local $/;
         <$fh>;
     });
+    my $skillConfig = $JSON->decode(do {
+        open my $fh, "<", 'skill.json' or die "$!\n";
+        local $/;
+        <$fh>;
+    });
     my %allRegions = map {
         $_->{awsRegion}, 1
     } @{$askConfig->{deploy_settings}->{default}->{resources}->{lambda}};
     @REGIONS = sort keys %allRegions;
+    @LOCALES = sort keys %{$skillConfig->{manifest}->{publishingInformation}->{locales}};
     $APP_DIR = $BASE_DIR unless -d $APP_DIR;
     for my $tool(@BUILD_TOOLS){
         if(-f "$APP_DIR/$tool->{build_file}"){
@@ -112,7 +119,7 @@ sub setupModels {
     $json .= $_ for <$fh>;
     close $fh or die "$!";
     my $baseModel = $JSON->decode($json);
-    for my $locale("en-GB", "en-US"){ # TODO: locale
+    for my $locale(@LOCALES){
         open $fh, ">", "$MODELS_DIR/${locale}.json" or die "$!";
         print $fh $JSON->encode($baseModel);
         close $fh or die "$!";
