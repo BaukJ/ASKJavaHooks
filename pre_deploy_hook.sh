@@ -109,11 +109,12 @@ sub copyAppToLambda {
 sub setupModels {
     my $baseModel = fileToJson("$MODELS_DIR/base.json");
     for my $locale(@LOCALES){
-        my $localeModel = {};
-        if(-f "$MODELS_DIR/${locale}-overlay.json"){
-            $localeModel = deepMerge($baseModel, fileToJson("$MODELS_DIR/${locale}-overlay.json"));
-        }else{
-            $localeModel = $baseModel;
+        my $localeModel = $baseModel;
+        my ($language, $location) = split("-", $locale);
+        for my $overlay($language, $location, $locale){
+            if(-f "$MODELS_DIR/overlay/${overlay}.json"){
+                $localeModel = deepMerge($localeModel, fileToJson("$MODELS_DIR/overlay/${overlay}.json"));
+            }
         }
         open my $fh, ">", "$MODELS_DIR/${locale}.json" or die "$!";
         print $fh $JSON->encode($localeModel);
@@ -161,7 +162,13 @@ sub deepMerge($$){
     }elsif(ref $a eq "ARRAY"){
         if(ref $a->[0] eq "HASH" and $a->[0]->{name}){
             my %hashA = map { ($_->{name}, $_) } @{$a};
-            my %hashB = map { ($_->{name}, $_) } @{$b};
+            my %hashB = map {
+                if($_->{_name_}){
+                    (delete $_->{_name_}, $_)
+                }else{
+                    ($_->{name}, $_)
+                }
+            } @{$b};
             my $hashC = deepMerge(\%hashA, \%hashB);
             return [values %{$hashC}];
         }else{
